@@ -31,6 +31,21 @@ canvas { display: block; }
   z-index: 10;
 }
 #btn:hover { background: rgba(255,255,255,0.15); }
+#ledBtn {
+  position: fixed;
+  top: 54px;
+  right: 16px;
+  padding: 8px 16px;
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.3);
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: monospace;
+  font-size: 14px;
+  z-index: 10;
+}
+#ledBtn:hover { background: rgba(255,255,255,0.15); }
 #label {
   position: fixed;
   bottom: 16px;
@@ -44,10 +59,14 @@ canvas { display: block; }
 </head>
 <body>
 <button id="btn">Night Mode</button>
+<button id="ledBtn">LED: Green Solid</button>
 <div id="label">Little Trees · Black Rock Desert · 2026</div>
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { Line2 } from 'three/addons/lines/Line2.js';
+import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 
 // ─── Tree shape ───────────────────────────────────────────────────────────────
 function buildTreeShape() {
@@ -93,11 +112,11 @@ function buildPlayaGround() {
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.repeat.set(20, 20);
   const geo = new THREE.PlaneGeometry(400, 400);
-  const mat = new THREE.MeshLambertMaterial({ map: tex });
+  const mat = new THREE.MeshLambertMaterial({ map: tex, emissive: 0x100800, emissiveIntensity: 0 });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.rotation.x = -Math.PI / 2;
   mesh.receiveShadow = true;
-  return mesh;
+  return { mesh, mat };
 }
 
 // ─── Guy wires ────────────────────────────────────────────────────────────────
@@ -189,7 +208,7 @@ document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87ceeb);
-scene.fog = new THREE.Fog(0xc8b8a0, 80, 300);
+scene.fog = new THREE.Fog(0xc8b8a0, 50, 300);
 
 const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 1000);
 camera.position.set(12, 8, 22);
@@ -222,6 +241,9 @@ scene.add(sunLight);
 const ambientNight = new THREE.AmbientLight(0x111133, 0.0);
 scene.add(ambientNight);
 
+const hemiNight = new THREE.HemisphereLight(0x050a14, 0x1a0d00, 0.0);
+scene.add(hemiNight);
+
 const treeGlow = new THREE.PointLight(0x00ff44, 0.0, 40);
 treeGlow.position.set(0, 7, 1);
 scene.add(treeGlow);
@@ -245,16 +267,21 @@ scene.add(treeMesh);
 const perimPts = treeShape.getPoints(64);
 perimPts.push(perimPts[0].clone());
 const perimPts3 = perimPts.map(p => new THREE.Vector3(p.x, p.y, 0));
-const perimGeo = new THREE.BufferGeometry().setFromPoints(perimPts3);
-const ledLine = new THREE.Line(perimGeo, new THREE.LineBasicMaterial({ color: 0x00ff44 }));
+const lineGeo = new LineGeometry();
+lineGeo.setPositions(perimPts3.flatMap(p => [p.x, p.y, p.z]));
+const ledLine = new Line2(lineGeo, new LineMaterial({
+  color: 0x00ff44, linewidth: 6, transparent: true, opacity: 1,
+  resolution: new THREE.Vector2(innerWidth, innerHeight)
+}));
 ledLine.visible = false;
 scene.add(ledLine);
 
-const haloLine = new THREE.Line(
-  perimGeo,
-  new THREE.LineBasicMaterial({ color: 0x00ff44, opacity: 0.25, transparent: true, linewidth: 2 })
-);
-haloLine.scale.set(1.02, 1.02, 1);
+const haloLineGeo = new LineGeometry();
+haloLineGeo.setPositions(perimPts3.flatMap(p => [p.x * 1.02, p.y * 1.02, p.z]));
+const haloLine = new Line2(haloLineGeo, new LineMaterial({
+  color: 0x00ff44, linewidth: 14, opacity: 0.25, transparent: true,
+  resolution: new THREE.Vector2(innerWidth, innerHeight)
+}));
 haloLine.position.z = 0.01;
 haloLine.visible = false;
 scene.add(haloLine);
@@ -284,7 +311,8 @@ fanHousing.position.set(0, 12.5, 0);
 scene.add(fanHousing);
 
 // ─── Ground ───────────────────────────────────────────────────────────────────
-scene.add(buildPlayaGround());
+const { mesh: playaMesh, mat: playaMat } = buildPlayaGround();
+scene.add(playaMesh);
 
 // ─── Stars ────────────────────────────────────────────────────────────────────
 const stars = buildStars();
@@ -298,7 +326,7 @@ const clock = new THREE.Clock();
 const skyDay   = new THREE.Color(0x87ceeb);
 const skyNight = new THREE.Color(0x03030f);
 const fogDay   = new THREE.Color(0xc8b8a0);
-const fogNight = new THREE.Color(0x010108);
+const fogNight = new THREE.Color(0x150d06);
 
 function updateDayNight(delta) {
   const speed = 0.8;
@@ -311,7 +339,9 @@ function updateDayNight(delta) {
 
   ambientDay.intensity  = 0.6 * (1 - t);
   sunLight.intensity    = 2.0 * (1 - t);
-  ambientNight.intensity = 0.15 * t;
+  ambientNight.intensity = 0.20 * t;
+  hemiNight.intensity   = 0.3 * t;
+  playaMat.emissiveIntensity = 0.12 * t;
   treeGlow.intensity    = 3.0 * t;
 
   scene.background = skyDay.clone().lerp(skyNight, t);
@@ -324,6 +354,72 @@ function updateDayNight(delta) {
   ledMarkers.forEach(m => { m.visible = nightOn; });
 }
 
+// ─── LED presets ──────────────────────────────────────────────────────────────
+const ledModes = [
+  { name: 'Green Solid', color: 0x00ff44, pattern: 'solid' },
+  { name: 'Green Pulse', color: 0x00ff44, pattern: 'pulse' },
+  { name: 'Blue Solid',  color: 0x00aaff, pattern: 'solid' },
+  { name: 'Blue Pulse',  color: 0x00aaff, pattern: 'pulse' },
+  { name: 'Red Strobe',  color: 0xff2200, pattern: 'strobe' },
+  { name: 'White Solid', color: 0xffffff, pattern: 'solid' },
+  { name: 'Amber Pulse', color: 0xff8800, pattern: 'pulse' },
+  { name: 'Rainbow',     color: null,     pattern: 'rainbow' },
+  { name: 'Loop Rainbow', color: null,    pattern: 'loop-rainbow' },
+];
+
+function shuffleArray(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+}
+
+const ledOrder = ledModes.map((_, i) => i);
+shuffleArray(ledOrder);
+let currentLedModeIdx = 0;
+let elapsedTime = 0;
+
+function applyLedColor(hexColor) {
+  ledLine.material.color.set(hexColor);
+  haloLine.material.color.set(hexColor);
+  treeGlow.color.set(hexColor);
+}
+
+function updateLedPattern(t) {
+  const mode = ledModes[ledOrder[currentLedModeIdx]];
+  if (mode.pattern === 'solid') {
+    ledLine.material.opacity = 1;
+    haloLine.material.opacity = 0.25;
+    treeGlow.intensity = 3.0 * nightBlend;
+  } else if (mode.pattern === 'pulse') {
+    const v = 0.5 + 0.5 * Math.sin(t * 2);
+    ledLine.material.opacity = v;
+    haloLine.material.opacity = v * 0.25;
+    treeGlow.intensity = 3 * v * nightBlend;
+  } else if (mode.pattern === 'strobe') {
+    const v = Math.floor(t * 8) % 2;
+    ledLine.material.opacity = v;
+    haloLine.material.opacity = v * 0.25;
+    treeGlow.intensity = 3 * v * nightBlend;
+  } else if (mode.pattern === 'rainbow') {
+    const hue = (t * 0.15) % 1;
+    ledLine.material.color.setHSL(hue, 1, 0.5);
+    haloLine.material.color.setHSL(hue, 1, 0.5);
+    treeGlow.color.setHSL(hue, 1, 0.5);
+    ledLine.material.opacity = 1;
+    haloLine.material.opacity = 0.25;
+    treeGlow.intensity = 3.0 * nightBlend;
+  } else if (mode.pattern === 'loop-rainbow') {
+    const hue = (t * 0.5) % 1;
+    ledLine.material.color.setHSL(hue, 1, 0.5);
+    haloLine.material.color.setHSL(hue, 1, 0.5);
+    treeGlow.color.setHSL(hue, 1, 0.5);
+    ledLine.material.opacity = 1;
+    haloLine.material.opacity = 0.25;
+    treeGlow.intensity = 3.0 * nightBlend;
+  }
+}
+
 // ─── Button ───────────────────────────────────────────────────────────────────
 const btn = document.getElementById('btn');
 btn.addEventListener('click', () => {
@@ -331,11 +427,25 @@ btn.addEventListener('click', () => {
   btn.textContent = targetBlend === 1 ? 'Day Mode' : 'Night Mode';
 });
 
+const ledBtn = document.getElementById('ledBtn');
+ledBtn.addEventListener('click', () => {
+  currentLedModeIdx++;
+  if (currentLedModeIdx >= ledOrder.length) {
+    currentLedModeIdx = 0;
+    shuffleArray(ledOrder);
+  }
+  const mode = ledModes[ledOrder[currentLedModeIdx]];
+  if (mode.color !== null) applyLedColor(mode.color);
+  ledBtn.textContent = 'LED: ' + mode.name;
+});
+
 // ─── Animate ──────────────────────────────────────────────────────────────────
 function animate() {
   requestAnimationFrame(animate);
   const delta = clock.getDelta();
+  elapsedTime += delta;
   updateDayNight(delta);
+  updateLedPattern(elapsedTime);
   controls.update();
   renderer.render(scene, camera);
 }
@@ -344,6 +454,8 @@ window.addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
+  ledLine.material.resolution.set(innerWidth, innerHeight);
+  haloLine.material.resolution.set(innerWidth, innerHeight);
 });
 
 animate();
