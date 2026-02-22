@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Little Trees — Burning Man 2026</title>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://esm.sh/three@0.169.0",
+    "three/addons/": "https://esm.sh/three@0.169.0/examples/jsm/"
+  }
+}
+</script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #000; overflow: hidden; }
+canvas { display: block; }
+#btn {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  padding: 8px 16px;
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.3);
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: monospace;
+  font-size: 14px;
+  z-index: 10;
+}
+#btn:hover { background: rgba(255,255,255,0.15); }
+#label {
+  position: fixed;
+  bottom: 16px;
+  left: 16px;
+  color: rgba(255,255,255,0.5);
+  font-family: monospace;
+  font-size: 12px;
+  z-index: 10;
+}
+</style>
+</head>
+<body>
+<button id="btn">Night Mode</button>
+<div id="label">Little Trees · Black Rock Desert · 2026</div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ─── Tree shape ───────────────────────────────────────────────────────────────
+function buildTreeShape() {
+  const shape = new THREE.Shape();
+  const pts = [
+    [-0.5, 0], [0.5, 0], [0.5, 4],
+    [3.5, 4], [3.5, 6.5], [2.0, 6.5],
+    [2.5, 7.0], [2.5, 9.5], [1.25, 9.5],
+    [1.5, 10.0], [1.5, 12.0], [0.0, 14.0],
+    [-1.5, 12.0], [-1.5, 10.0], [-1.25, 9.5],
+    [-2.5, 9.5], [-2.5, 7.0], [-2.0, 6.5],
+    [-3.5, 6.5], [-3.5, 4.0], [-0.5, 4.0]
+  ];
+  shape.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i][0], pts[i][1]);
+  shape.closePath();
+  return shape;
+}
+
+// ─── Playa ground ─────────────────────────────────────────────────────────────
+function buildPlayaGround() {
+  const size = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#c8b99a';
+  ctx.fillRect(0, 0, size, size);
+  ctx.strokeStyle = '#a89880';
+  ctx.lineWidth = 0.8;
+  for (let i = 0; i < 120; i++) {
+    ctx.beginPath();
+    const x = Math.random() * size;
+    const y = Math.random() * size;
+    const len = 20 + Math.random() * 60;
+    const angle = Math.random() * Math.PI;
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + Math.cos(angle) * len, y + Math.sin(angle) * len);
+    ctx.globalAlpha = 0.3 + Math.random() * 0.4;
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(20, 20);
+  const geo = new THREE.PlaneGeometry(400, 400);
+  const mat = new THREE.MeshLambertMaterial({ map: tex });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.receiveShadow = true;
+  return mesh;
+}
+
+// ─── Guy wires ────────────────────────────────────────────────────────────────
+function buildGuyWires(scene) {
+  const group = new THREE.Group();
+  const ledMarkers = [];
+  const anchorCylinders = [];
+  const radius = 10;
+  const top = new THREE.Vector3(0, 11, 0);
+
+  for (let i = 0; i < 6; i++) {
+    const angle = (i / 6) * Math.PI * 2;
+    const gx = Math.cos(angle) * radius;
+    const gz = Math.sin(angle) * radius;
+    const anchor = new THREE.Vector3(gx, 0, gz);
+
+    const pts = [top, anchor];
+    const geo = new THREE.BufferGeometry().setFromPoints(pts);
+    const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xaaaaaa, opacity: 0.6, transparent: true }));
+    group.add(line);
+
+    for (let j = 1; j <= 3; j++) {
+      const t = j / 4;
+      const pos = top.clone().lerp(anchor, t);
+      const sphere = new THREE.Mesh(
+        new THREE.SphereGeometry(0.15, 8, 8),
+        new THREE.MeshBasicMaterial({ color: 0xffff88 })
+      );
+      sphere.position.copy(pos);
+      sphere.visible = false;
+      group.add(sphere);
+      ledMarkers.push(sphere);
+    }
+
+    const cylGeo = new THREE.CylinderGeometry(0.12, 0.18, 0.4, 8);
+    const cylMat = new THREE.MeshLambertMaterial({ color: 0x666655 });
+    const cyl = new THREE.Mesh(cylGeo, cylMat);
+    cyl.position.set(gx, 0.2, gz);
+    group.add(cyl);
+  }
+
+  return { group, ledMarkers };
+}
+
+// ─── Solar panels ─────────────────────────────────────────────────────────────
+function buildSolarPanels() {
+  const group = new THREE.Group();
+  const geo = new THREE.BoxGeometry(3.28, 0.08, 1.64);
+  const mat = new THREE.MeshLambertMaterial({ color: 0x1a1a3a });
+  [-1.8, 1.8].forEach(x => {
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(x, 0.8, 4.5);
+    mesh.rotation.x = -Math.PI / 6;
+    mesh.castShadow = true;
+    group.add(mesh);
+  });
+  return group;
+}
+
+// ─── Stars ────────────────────────────────────────────────────────────────────
+function buildStars() {
+  const count = 4000;
+  const positions = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.random() * Math.PI / 2;
+    const r = 290 + Math.random() * 10;
+    positions[i * 3]     = r * Math.sin(phi) * Math.cos(theta);
+    positions[i * 3 + 1] = r * Math.cos(phi);
+    positions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  const mat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.6, sizeAttenuation: true });
+  const stars = new THREE.Points(geo, mat);
+  stars.visible = false;
+  return stars;
+}
+
+// ─── Scene / renderer / camera ────────────────────────────────────────────────
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(devicePixelRatio);
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87ceeb);
+scene.fog = new THREE.Fog(0xc8b8a0, 80, 300);
+
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 1000);
+camera.position.set(12, 8, 22);
+camera.lookAt(0, 6, 0);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 6, 0);
+controls.minDistance = 5;
+controls.maxDistance = 100;
+controls.maxPolarAngle = Math.PI / 2 - 0.02;
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+
+// ─── Lighting ─────────────────────────────────────────────────────────────────
+const ambientDay = new THREE.AmbientLight(0xfff4e0, 0.6);
+scene.add(ambientDay);
+
+const sunLight = new THREE.DirectionalLight(0xfff4cc, 2.0);
+sunLight.position.set(30, 50, 20);
+sunLight.castShadow = true;
+sunLight.shadow.mapSize.set(2048, 2048);
+sunLight.shadow.camera.near = 1;
+sunLight.shadow.camera.far = 200;
+sunLight.shadow.camera.left = -20;
+sunLight.shadow.camera.right = 20;
+sunLight.shadow.camera.top = 20;
+sunLight.shadow.camera.bottom = -20;
+scene.add(sunLight);
+
+const ambientNight = new THREE.AmbientLight(0x111133, 0.0);
+scene.add(ambientNight);
+
+const treeGlow = new THREE.PointLight(0x00ff44, 0.0, 40);
+treeGlow.position.set(0, 7, 1);
+scene.add(treeGlow);
+
+// ─── Tree ─────────────────────────────────────────────────────────────────────
+const treeShape = buildTreeShape();
+const depth = 5 / 12;
+const extrudeGeo = new THREE.ExtrudeGeometry(treeShape, {
+  depth,
+  bevelEnabled: false
+});
+extrudeGeo.translate(0, 0, -depth / 2);
+const treeMesh = new THREE.Mesh(
+  extrudeGeo,
+  new THREE.MeshLambertMaterial({ color: 0x2d5a1b, side: THREE.DoubleSide })
+);
+treeMesh.castShadow = true;
+scene.add(treeMesh);
+
+// LED perimeter outline
+const perimPts = treeShape.getPoints(64);
+perimPts.push(perimPts[0].clone());
+const perimPts3 = perimPts.map(p => new THREE.Vector3(p.x, p.y, 0));
+const perimGeo = new THREE.BufferGeometry().setFromPoints(perimPts3);
+const ledLine = new THREE.Line(perimGeo, new THREE.LineBasicMaterial({ color: 0x00ff44 }));
+ledLine.visible = false;
+scene.add(ledLine);
+
+const haloLine = new THREE.Line(
+  perimGeo,
+  new THREE.LineBasicMaterial({ color: 0x00ff44, opacity: 0.25, transparent: true, linewidth: 2 })
+);
+haloLine.scale.set(1.02, 1.02, 1);
+haloLine.position.z = 0.01;
+haloLine.visible = false;
+scene.add(haloLine);
+
+// ─── Base platform ────────────────────────────────────────────────────────────
+const platform = new THREE.Mesh(
+  new THREE.BoxGeometry(8, 0.25, 8),
+  new THREE.MeshLambertMaterial({ color: 0x888877 })
+);
+platform.position.y = -0.125;
+platform.receiveShadow = true;
+scene.add(platform);
+
+// ─── Guy wires ────────────────────────────────────────────────────────────────
+const { group: wireGroup, ledMarkers } = buildGuyWires(scene);
+scene.add(wireGroup);
+
+// ─── Solar panels ─────────────────────────────────────────────────────────────
+scene.add(buildSolarPanels());
+
+// ─── Scent fan housing ────────────────────────────────────────────────────────
+const fanHousing = new THREE.Mesh(
+  new THREE.BoxGeometry(1.5, 0.8, 0.6),
+  new THREE.MeshLambertMaterial({ color: 0x555555 })
+);
+fanHousing.position.set(0, 12.5, 0);
+scene.add(fanHousing);
+
+// ─── Ground ───────────────────────────────────────────────────────────────────
+scene.add(buildPlayaGround());
+
+// ─── Stars ────────────────────────────────────────────────────────────────────
+const stars = buildStars();
+scene.add(stars);
+
+// ─── Day/Night state ─────────────────────────────────────────────────────────
+let nightBlend = 0;
+let targetBlend = 0;
+const clock = new THREE.Clock();
+
+const skyDay   = new THREE.Color(0x87ceeb);
+const skyNight = new THREE.Color(0x03030f);
+const fogDay   = new THREE.Color(0xc8b8a0);
+const fogNight = new THREE.Color(0x010108);
+
+function updateDayNight(delta) {
+  const speed = 0.8;
+  if (nightBlend < targetBlend) {
+    nightBlend = Math.min(targetBlend, nightBlend + speed * delta);
+  } else if (nightBlend > targetBlend) {
+    nightBlend = Math.max(targetBlend, nightBlend - speed * delta);
+  }
+  const t = nightBlend;
+
+  ambientDay.intensity  = 0.6 * (1 - t);
+  sunLight.intensity    = 2.0 * (1 - t);
+  ambientNight.intensity = 0.15 * t;
+  treeGlow.intensity    = 3.0 * t;
+
+  scene.background = skyDay.clone().lerp(skyNight, t);
+  scene.fog.color  = fogDay.clone().lerp(fogNight, t);
+
+  const nightOn = t > 0.5;
+  ledLine.visible  = nightOn;
+  haloLine.visible = nightOn;
+  stars.visible    = nightOn;
+  ledMarkers.forEach(m => { m.visible = nightOn; });
+}
+
+// ─── Button ───────────────────────────────────────────────────────────────────
+const btn = document.getElementById('btn');
+btn.addEventListener('click', () => {
+  targetBlend = targetBlend === 0 ? 1 : 0;
+  btn.textContent = targetBlend === 1 ? 'Day Mode' : 'Night Mode';
+});
+
+// ─── Animate ──────────────────────────────────────────────────────────────────
+function animate() {
+  requestAnimationFrame(animate);
+  const delta = clock.getDelta();
+  updateDayNight(delta);
+  controls.update();
+  renderer.render(scene, camera);
+}
+
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+animate();
+</script>
+</body>
+</html>
