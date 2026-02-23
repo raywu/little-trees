@@ -59,7 +59,7 @@ canvas { display: block; }
 </head>
 <body>
 <button id="btn">Night Mode</button>
-<button id="ledBtn">LED: Green Solid</button>
+<button id="ledBtn">LED: ...</button>
 <div id="label">Little Trees · Black Rock Desert · 2026</div>
 <script type="module">
 import * as THREE from 'three';
@@ -138,7 +138,7 @@ function buildGuyWires(scene) {
     const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xaaaaaa, opacity: 0.6, transparent: true }));
     group.add(line);
 
-    for (let j = 1; j <= 3; j++) {
+    for (let j = 3; j <= 3; j++) {
       const t = j / 4;
       const pos = top.clone().lerp(anchor, t);
       const sphere = new THREE.Mesh(
@@ -190,7 +190,7 @@ function buildStars() {
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  const mat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.6, sizeAttenuation: true });
+  const mat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.6, sizeAttenuation: true, fog: false });
   const stars = new THREE.Points(geo, mat);
   stars.visible = false;
   return stars;
@@ -248,6 +248,14 @@ const treeGlow = new THREE.PointLight(0x00ff44, 0.0, 40);
 treeGlow.position.set(0, 7, 1);
 scene.add(treeGlow);
 
+const moonLight = new THREE.DirectionalLight(0xcce4ff, 0.0);
+moonLight.position.set(
+  Math.sin(1.45) * Math.cos(0.9),
+  Math.cos(1.45),
+  Math.sin(1.45) * Math.sin(0.9)
+);
+scene.add(moonLight);
+
 // ─── Tree ─────────────────────────────────────────────────────────────────────
 const treeShape = buildTreeShape();
 const depth = 5 / 12;
@@ -286,6 +294,29 @@ haloLine.position.z = 0.01;
 haloLine.visible = false;
 scene.add(haloLine);
 
+const N = perimPts3.length;
+
+const rainbowLineGeo = new LineGeometry();
+rainbowLineGeo.setPositions(perimPts3.flatMap(p => [p.x, p.y, p.z]));
+rainbowLineGeo.setColors(new Array(N * 3).fill(1));
+const rainbowLine = new Line2(rainbowLineGeo, new LineMaterial({
+  vertexColors: true, linewidth: 6, transparent: true, opacity: 1,
+  resolution: new THREE.Vector2(innerWidth, innerHeight)
+}));
+rainbowLine.visible = false;
+scene.add(rainbowLine);
+
+const rainbowHaloGeo = new LineGeometry();
+rainbowHaloGeo.setPositions(perimPts3.flatMap(p => [p.x * 1.02, p.y * 1.02, p.z]));
+rainbowHaloGeo.setColors(new Array(N * 3).fill(1));
+const rainbowHaloLine = new Line2(rainbowHaloGeo, new LineMaterial({
+  vertexColors: true, linewidth: 14, transparent: true, opacity: 0.25,
+  resolution: new THREE.Vector2(innerWidth, innerHeight)
+}));
+rainbowHaloLine.position.z = 0.01;
+rainbowHaloLine.visible = false;
+scene.add(rainbowHaloLine);
+
 // ─── Base platform ────────────────────────────────────────────────────────────
 const platform = new THREE.Mesh(
   new THREE.BoxGeometry(8, 0.25, 8),
@@ -318,6 +349,30 @@ scene.add(playaMesh);
 const stars = buildStars();
 scene.add(stars);
 
+// ─── Moon ─────────────────────────────────────────────────────────────────────
+// Full white disc + sky-colored mask disc offset to carve the crescent bite.
+const moonDiscShape = new THREE.Shape();
+moonDiscShape.absarc(0, 0, 5, 0, Math.PI * 2, false);
+const moonGeo = new THREE.ShapeGeometry(moonDiscShape, 32);
+const moon = new THREE.Mesh(moonGeo,
+  new THREE.MeshBasicMaterial({ color: 0xfffde0, side: THREE.DoubleSide, fog: false }));
+
+const moonMaskShape = new THREE.Shape();
+moonMaskShape.absarc(0, 0, 4.3, 0, Math.PI * 2, false);
+const moonMaskGeo = new THREE.ShapeGeometry(moonMaskShape, 32);
+const moonMaskMat = new THREE.MeshBasicMaterial({ color: 0x03030f, side: THREE.DoubleSide, fog: false });
+const moonMask = new THREE.Mesh(moonMaskGeo, moonMaskMat);
+moonMask.position.set(1.8, 0, -0.5);
+moon.add(moonMask);
+moon.position.set(
+  285 * Math.sin(1.45) * Math.cos(0.9),
+  285 * Math.cos(1.45),
+  285 * Math.sin(1.45) * Math.sin(0.9)
+);
+moon.lookAt(0, 0, 0);
+moon.visible = false;
+scene.add(moon);
+
 // ─── Day/Night state ─────────────────────────────────────────────────────────
 let nightBlend = 0;
 let targetBlend = 0;
@@ -341,16 +396,19 @@ function updateDayNight(delta) {
   sunLight.intensity    = 2.0 * (1 - t);
   ambientNight.intensity = 0.20 * t;
   hemiNight.intensity   = 0.3 * t;
-  playaMat.emissiveIntensity = 0.12 * t;
+  playaMat.emissiveIntensity = 0.20 * t;
+  moonLight.intensity   = 0.6 * t;
   treeGlow.intensity    = 3.0 * t;
 
   scene.background = skyDay.clone().lerp(skyNight, t);
+  moonMaskMat.color.copy(scene.background);
   scene.fog.color  = fogDay.clone().lerp(fogNight, t);
 
   const nightOn = t > 0.5;
   ledLine.visible  = nightOn;
   haloLine.visible = nightOn;
   stars.visible    = nightOn;
+  moon.visible     = nightOn;
   ledMarkers.forEach(m => { m.visible = nightOn; });
 }
 
@@ -377,6 +435,11 @@ function shuffleArray(arr) {
 const ledOrder = ledModes.map((_, i) => i);
 shuffleArray(ledOrder);
 let currentLedModeIdx = 0;
+{
+  const initMode = ledModes[ledOrder[0]];
+  if (initMode.color !== null) applyLedColor(initMode.color);
+  document.getElementById('ledBtn').textContent = 'LED: ' + initMode.name;
+}
 let elapsedTime = 0;
 
 function applyLedColor(hexColor) {
@@ -387,6 +450,12 @@ function applyLedColor(hexColor) {
 
 function updateLedPattern(t) {
   const mode = ledModes[ledOrder[currentLedModeIdx]];
+  if (mode.pattern !== 'loop-rainbow') {
+    ledLine.visible = true;
+    haloLine.visible = true;
+    rainbowLine.visible = false;
+    rainbowHaloLine.visible = false;
+  }
   if (mode.pattern === 'solid') {
     ledLine.material.opacity = 1;
     haloLine.material.opacity = 0.25;
@@ -410,12 +479,21 @@ function updateLedPattern(t) {
     haloLine.material.opacity = 0.25;
     treeGlow.intensity = 3.0 * nightBlend;
   } else if (mode.pattern === 'loop-rainbow') {
-    const hue = (t * 0.5) % 1;
-    ledLine.material.color.setHSL(hue, 1, 0.5);
-    haloLine.material.color.setHSL(hue, 1, 0.5);
-    treeGlow.color.setHSL(hue, 1, 0.5);
-    ledLine.material.opacity = 1;
-    haloLine.material.opacity = 0.25;
+    ledLine.visible = false;
+    haloLine.visible = false;
+    rainbowLine.visible = true;
+    rainbowHaloLine.visible = true;
+    const colors = [];
+    const c = new THREE.Color();
+    for (let i = 0; i < N; i++) {
+      const hue = ((i / N - t * 0.4) % 1 + 1) % 1;
+      c.setHSL(hue, 1, 0.5);
+      colors.push(c.r, c.g, c.b);
+    }
+    rainbowLineGeo.setColors(colors);
+    rainbowHaloGeo.setColors(colors);
+    const glowHue = ((- t * 0.4) % 1 + 1) % 1;
+    treeGlow.color.setHSL(glowHue, 1, 0.5);
     treeGlow.intensity = 3.0 * nightBlend;
   }
 }
@@ -456,6 +534,8 @@ window.addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
   ledLine.material.resolution.set(innerWidth, innerHeight);
   haloLine.material.resolution.set(innerWidth, innerHeight);
+  rainbowLine.material.resolution.set(innerWidth, innerHeight);
+  rainbowHaloLine.material.resolution.set(innerWidth, innerHeight);
 });
 
 animate();
