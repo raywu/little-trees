@@ -71,19 +71,94 @@ import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 // ─── Tree shape ───────────────────────────────────────────────────────────────
 function buildTreeShape() {
   const shape = new THREE.Shape();
-  const pts = [
-    [-0.5, 0], [0.5, 0], [0.5, 4],
-    [3.5, 4], [3.5, 6.5], [2.0, 6.5],
-    [2.5, 7.0], [2.5, 9.5], [1.25, 9.5],
-    [1.5, 10.0], [1.5, 12.0], [0.0, 14.0],
-    [-1.5, 12.0], [-1.5, 10.0], [-1.25, 9.5],
-    [-2.5, 9.5], [-2.5, 7.0], [-2.0, 6.5],
-    [-3.5, 6.5], [-3.5, 4.0], [-0.5, 4.0]
-  ];
-  shape.moveTo(pts[0][0], pts[0][1]);
-  for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i][0], pts[i][1]);
+  const L = (x, y) => shape.lineTo(x, y);
+  const Q = (cpx, cpy, x, y) => shape.quadraticCurveTo(cpx, cpy, x, y);
+
+  shape.moveTo(-3.0, 0);
+
+  // flat bottom
+  L(3.0, 0);
+
+  // tier 1 right — 4 ridges
+  L(2.75, 0.3);
+  Q(3.35, 0.7,   2.65, 1.2);
+  Q(3.2,  1.65,  2.58, 2.1);
+  Q(3.05, 2.55,  2.52, 3.0);
+  Q(2.9,  3.45,  2.5,  3.95);
+  L(2.5,  4.5);
+  Q(1.1,  4.15,  1.9,  4.5);   // rounded step 1→2
+
+  // tier 2 right — 3 ridges
+  L(1.7,  4.9);
+  Q(2.25, 5.3,   1.62, 5.85);
+  Q(2.05, 6.3,   1.53, 6.9);
+  Q(1.85, 7.3,   1.5,  7.85);
+  L(1.5,  8.5);
+  Q(0.65, 8.15,  1.1,  8.5);   // rounded step 2→3
+
+  // tier 3 right — 2 ridges + shoulder to peak
+  L(0.92, 8.95);
+  Q(1.38, 9.4,   0.83, 9.9);
+  Q(1.18, 10.4,  0.75, 10.95);
+  Q(0.78, 12.2,  0.0,  14.0);
+
+  // tier 3 left — mirrored going down
+  Q(-0.78, 12.2,  -0.75, 10.95);
+  Q(-1.18, 10.4,  -0.83, 9.9);
+  Q(-1.38, 9.4,   -0.92, 8.95);
+  L(-1.1,  8.5);
+  Q(-0.65, 8.15,  -1.5,  8.5);  // rounded step 3→2 (left)
+
+  // tier 2 left — mirrored
+  L(-1.5,  7.85);
+  Q(-1.85, 7.3,   -1.53, 6.9);
+  Q(-2.05, 6.3,   -1.62, 5.85);
+  Q(-2.25, 5.3,   -1.7,  4.9);
+  L(-1.9,  4.5);
+  Q(-1.1,  4.15,  -2.5,  4.5);  // rounded step 2→1 (left)
+
+  // tier 1 left — mirrored
+  L(-2.5,  3.95);
+  Q(-2.9,  3.45,  -2.52, 3.0);
+  Q(-3.05, 2.55,  -2.58, 2.1);
+  Q(-3.2,  1.65,  -2.65, 1.2);
+  Q(-3.35, 0.7,   -2.75, 0.3);
+
   shape.closePath();
   return shape;
+}
+
+function buildLogoTexture() {
+  const W = 512, H = 200;
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#163d0e';
+  ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = '#c8a84b';
+  ctx.lineWidth = 5;
+  ctx.strokeRect(4, 4, W - 8, H - 8);
+  ctx.lineWidth = 2;
+  ctx.strokeRect(13, 13, W - 26, H - 26);
+  ctx.save();
+  ctx.transform(1, 0, -0.12, 1, W * 0.12 * 0.5, 0);
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = 'bold 74px "Arial Black", Impact, sans-serif';
+  ctx.fillText('BIG-ASS TREES', W / 2, 95);
+  ctx.restore();
+  ctx.strokeStyle = '#c8a84b';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(30, 135); ctx.lineTo(W - 30, 135);
+  ctx.stroke();
+  ctx.fillStyle = '#c8a84b';
+  ctx.font = 'bold 20px Arial, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('PLAYA  FRESHENER', W / 2, 165);
+  return new THREE.CanvasTexture(canvas);
 }
 
 // ─── Playa ground ─────────────────────────────────────────────────────────────
@@ -196,6 +271,54 @@ function buildStars() {
   return stars;
 }
 
+// ─── Mountains ────────────────────────────────────────────────────────────────
+function buildMountains() {
+  const segments = 120;
+  const radius = 190;
+
+  function heightAt(angle) {
+    const east  = Math.max(0, Math.cos(angle));
+    const north = Math.max(0, -Math.sin(angle));
+    const west  = Math.max(0, -Math.cos(angle));
+    const south = Math.max(0, Math.sin(angle));
+    const base = east * 30 + north * 22 + west * 18 + south * 12;
+    const variation =
+      Math.sin(angle * 7  + 0.3) * 4.0 +
+      Math.sin(angle * 13 + 1.1) * 2.5 +
+      Math.sin(angle * 19 + 0.7) * 1.5 +
+      Math.sin(angle * 31 + 2.0) * 0.8;
+    return Math.max(2, base + variation);
+  }
+
+  const positions = [];
+  const indices = [];
+
+  for (let i = 0; i <= segments; i++) {
+    const angle = (i / segments) * Math.PI * 2;
+    const x = Math.cos(angle) * radius;
+    const z = Math.sin(angle) * radius;
+    const h = heightAt(angle);
+    positions.push(x, 0, z);
+    positions.push(x, h, z);
+  }
+
+  for (let i = 0; i < segments; i++) {
+    const base0 = i * 2;
+    const base1 = (i + 1) * 2;
+    indices.push(base0, base0 + 1, base1);
+    indices.push(base1, base0 + 1, base1 + 1);
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+
+  const mat = new THREE.MeshLambertMaterial({ color: 0x9e8e7a, side: THREE.DoubleSide });
+  const mesh = new THREE.Mesh(geo, mat);
+  return { mesh, mat };
+}
+
 // ─── Scene / renderer / camera ────────────────────────────────────────────────
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(devicePixelRatio);
@@ -250,11 +373,20 @@ scene.add(treeGlow);
 
 const moonLight = new THREE.DirectionalLight(0xcce4ff, 0.0);
 moonLight.position.set(
-  Math.sin(1.45) * Math.cos(0.9),
-  Math.cos(1.45),
-  Math.sin(1.45) * Math.sin(0.9)
+  Math.sin(1.3) * Math.cos(0.9),
+  Math.cos(1.3),
+  Math.sin(1.3) * Math.sin(0.9)
 );
 scene.add(moonLight);
+
+const moonSpot = new THREE.SpotLight(0xcce4ff, 0.0, 0, Math.PI / 5, 0.9, 0);
+moonSpot.position.set(
+  285 * Math.sin(1.3) * Math.cos(0.9),
+  285 * Math.cos(1.3),
+  285 * Math.sin(1.3) * Math.sin(0.9)
+);
+scene.add(moonSpot);
+scene.add(moonSpot.target);
 
 // ─── Tree ─────────────────────────────────────────────────────────────────────
 const treeShape = buildTreeShape();
@@ -317,6 +449,67 @@ rainbowHaloLine.position.z = 0.01;
 rainbowHaloLine.visible = false;
 scene.add(rainbowHaloLine);
 
+// ─── Logo ─────────────────────────────────────────────────────────────────────
+const LOGO_W = 2.4, LOGO_H = 0.94, LOGO_CY = 7.0;
+const logoMat = new THREE.MeshBasicMaterial({
+  map: buildLogoTexture(), transparent: true, opacity: 0.75,
+  side: THREE.DoubleSide, fog: false
+});
+const logoMesh = new THREE.Mesh(new THREE.PlaneGeometry(LOGO_W, LOGO_H), logoMat);
+logoMesh.position.set(0, LOGO_CY, depth / 2 + 0.05);
+scene.add(logoMesh);
+
+const logoMeshBack = new THREE.Mesh(new THREE.PlaneGeometry(LOGO_W, LOGO_H), logoMat);
+logoMeshBack.position.set(0, LOGO_CY, -(depth / 2 + 0.05));
+logoMeshBack.rotation.y = Math.PI;
+scene.add(logoMeshBack);
+
+const logoBorderPts = [
+  new THREE.Vector3(-LOGO_W / 2, LOGO_CY - LOGO_H / 2, depth / 2 + 0.1),
+  new THREE.Vector3( LOGO_W / 2, LOGO_CY - LOGO_H / 2, depth / 2 + 0.1),
+  new THREE.Vector3( LOGO_W / 2, LOGO_CY + LOGO_H / 2, depth / 2 + 0.1),
+  new THREE.Vector3(-LOGO_W / 2, LOGO_CY + LOGO_H / 2, depth / 2 + 0.1),
+  new THREE.Vector3(-LOGO_W / 2, LOGO_CY - LOGO_H / 2, depth / 2 + 0.1),
+];
+const logoBorderGeo = new LineGeometry();
+logoBorderGeo.setPositions(logoBorderPts.flatMap(p => [p.x, p.y, p.z]));
+const logoBorderMat = new LineMaterial({
+  color: 0x00ff44, linewidth: 6, transparent: true, opacity: 1,
+  resolution: new THREE.Vector2(innerWidth, innerHeight)
+});
+const logoBorderLine = new Line2(logoBorderGeo, logoBorderMat);
+logoBorderLine.visible = false;
+scene.add(logoBorderLine);
+
+const logoBorderHaloGeo = new LineGeometry();
+logoBorderHaloGeo.setPositions(logoBorderPts.flatMap(p => [p.x, p.y, p.z]));
+const logoBorderHaloMat = new LineMaterial({
+  color: 0x00ff44, linewidth: 14, transparent: true, opacity: 0.25,
+  resolution: new THREE.Vector2(innerWidth, innerHeight)
+});
+const logoBorderHaloLine = new Line2(logoBorderHaloGeo, logoBorderHaloMat);
+logoBorderHaloLine.visible = false;
+scene.add(logoBorderHaloLine);
+
+const logoBorderBackPts = [
+  new THREE.Vector3(-LOGO_W / 2, LOGO_CY - LOGO_H / 2, -(depth / 2 + 0.1)),
+  new THREE.Vector3( LOGO_W / 2, LOGO_CY - LOGO_H / 2, -(depth / 2 + 0.1)),
+  new THREE.Vector3( LOGO_W / 2, LOGO_CY + LOGO_H / 2, -(depth / 2 + 0.1)),
+  new THREE.Vector3(-LOGO_W / 2, LOGO_CY + LOGO_H / 2, -(depth / 2 + 0.1)),
+  new THREE.Vector3(-LOGO_W / 2, LOGO_CY - LOGO_H / 2, -(depth / 2 + 0.1)),
+];
+const logoBorderBackGeo = new LineGeometry();
+logoBorderBackGeo.setPositions(logoBorderBackPts.flatMap(p => [p.x, p.y, p.z]));
+const logoBorderLineBack = new Line2(logoBorderBackGeo, logoBorderMat);
+logoBorderLineBack.visible = false;
+scene.add(logoBorderLineBack);
+
+const logoBorderHaloBackGeo = new LineGeometry();
+logoBorderHaloBackGeo.setPositions(logoBorderBackPts.flatMap(p => [p.x, p.y, p.z]));
+const logoBorderHaloLineBack = new Line2(logoBorderHaloBackGeo, logoBorderHaloMat);
+logoBorderHaloLineBack.visible = false;
+scene.add(logoBorderHaloLineBack);
+
 // ─── Base platform ────────────────────────────────────────────────────────────
 const platform = new THREE.Mesh(
   new THREE.BoxGeometry(8, 0.25, 8),
@@ -345,6 +538,10 @@ scene.add(fanHousing);
 const { mesh: playaMesh, mat: playaMat } = buildPlayaGround();
 scene.add(playaMesh);
 
+// ─── Mountains ────────────────────────────────────────────────────────────────
+const { mesh: mountainMesh, mat: mountainMat } = buildMountains();
+scene.add(mountainMesh);
+
 // ─── Stars ────────────────────────────────────────────────────────────────────
 const stars = buildStars();
 scene.add(stars);
@@ -365,9 +562,9 @@ const moonMask = new THREE.Mesh(moonMaskGeo, moonMaskMat);
 moonMask.position.set(1.8, 0, -0.5);
 moon.add(moonMask);
 moon.position.set(
-  285 * Math.sin(1.45) * Math.cos(0.9),
-  285 * Math.cos(1.45),
-  285 * Math.sin(1.45) * Math.sin(0.9)
+  285 * Math.sin(1.3) * Math.cos(0.9),
+  285 * Math.cos(1.3),
+  285 * Math.sin(1.3) * Math.sin(0.9)
 );
 moon.lookAt(0, 0, 0);
 moon.visible = false;
@@ -382,6 +579,8 @@ const skyDay   = new THREE.Color(0x87ceeb);
 const skyNight = new THREE.Color(0x03030f);
 const fogDay   = new THREE.Color(0xc8b8a0);
 const fogNight = new THREE.Color(0x150d06);
+const mtDay    = new THREE.Color(0x4a3830);
+const mtNight  = new THREE.Color(0x080604);
 
 function updateDayNight(delta) {
   const speed = 0.8;
@@ -398,11 +597,14 @@ function updateDayNight(delta) {
   hemiNight.intensity   = 0.3 * t;
   playaMat.emissiveIntensity = 0.20 * t;
   moonLight.intensity   = 0.6 * t;
+  moonSpot.intensity    = 1.5 * t;
   treeGlow.intensity    = 3.0 * t;
+  logoMat.opacity       = 0.75 + 0.25 * t;
 
   scene.background = skyDay.clone().lerp(skyNight, t);
   moonMaskMat.color.copy(scene.background);
   scene.fog.color  = fogDay.clone().lerp(fogNight, t);
+  mountainMat.color.copy(mtDay.clone().lerp(mtNight, t));
 
   const nightOn = t > 0.5;
   ledLine.visible  = nightOn;
@@ -410,6 +612,10 @@ function updateDayNight(delta) {
   stars.visible    = nightOn;
   moon.visible     = nightOn;
   ledMarkers.forEach(m => { m.visible = nightOn; });
+  logoBorderLine.visible         = nightOn;
+  logoBorderHaloLine.visible     = nightOn;
+  logoBorderLineBack.visible     = nightOn;
+  logoBorderHaloLineBack.visible = nightOn;
 }
 
 // ─── LED presets ──────────────────────────────────────────────────────────────
@@ -446,6 +652,8 @@ function applyLedColor(hexColor) {
   ledLine.material.color.set(hexColor);
   haloLine.material.color.set(hexColor);
   treeGlow.color.set(hexColor);
+  logoBorderMat.color.set(hexColor);
+  logoBorderHaloMat.color.set(hexColor);
 }
 
 function updateLedPattern(t) {
@@ -495,7 +703,13 @@ function updateLedPattern(t) {
     const glowHue = ((- t * 0.4) % 1 + 1) % 1;
     treeGlow.color.setHSL(glowHue, 1, 0.5);
     treeGlow.intensity = 3.0 * nightBlend;
+    logoBorderMat.color.setHSL(glowHue, 1, 0.5);
+    logoBorderHaloMat.color.setHSL(glowHue, 1, 0.5);
   }
+  logoBorderMat.opacity = ledLine.visible ? ledLine.material.opacity : (rainbowLine.visible ? 1 : 0);
+  logoBorderHaloMat.opacity = logoBorderMat.opacity * 0.25;
+  logoBorderLineBack.visible     = logoBorderLine.visible;
+  logoBorderHaloLineBack.visible = logoBorderHaloLine.visible;
 }
 
 // ─── Button ───────────────────────────────────────────────────────────────────
