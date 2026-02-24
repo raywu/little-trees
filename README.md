@@ -2,7 +2,9 @@
 
 **Burning Man 2026 Art Installation**
 
-[Live 3D Visualizer →](https://raywu.github.io/little-trees/)
+[Live 3D Visualizer →](https://raywu.github.io/little-trees/) | [GitHub →](https://github.com/raywu/little-trees)
+
+![3D Visualizer](screenshot.png)
 
 ## Overview
 14-ft sculptural silhouette of the classic Little Trees car air freshener. Combines
