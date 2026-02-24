@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Little Trees — Burning Man 2026</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Boogaloo&display=swap" rel="stylesheet">
 <script type="importmap">
 {
   "imports": {
@@ -98,35 +100,36 @@ function buildTreeShapeFromSVG(svgString) {
 }
 
 function buildLogoTexture() {
-  const W = 512, H = 200;
+  const H = 256;
+  const margin = 60;
   const canvas = document.createElement('canvas');
-  canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d');
+  ctx.font = '108px Boogaloo, "Arial Black", Impact, sans-serif';
+  const titleW = ctx.measureText('BIG-ASS TREES').width;
+  const W = Math.ceil(titleW + margin * 2);
+  canvas.width = W; canvas.height = H;
   ctx.fillStyle = '#163d0e';
   ctx.fillRect(0, 0, W, H);
   ctx.strokeStyle = '#c8a84b';
-  ctx.lineWidth = 5;
-  ctx.strokeRect(4, 4, W - 8, H - 8);
-  ctx.lineWidth = 2;
-  ctx.strokeRect(13, 13, W - 26, H - 26);
-  ctx.save();
-  ctx.transform(1, 0, -0.12, 1, W * 0.12 * 0.5, 0);
+  ctx.lineWidth = 15;
+  ctx.strokeRect(8, 8, W - 16, H - 16);
+  ctx.lineWidth = 6;
+  ctx.strokeRect(26, 26, W - 52, H - 52);
   ctx.fillStyle = '#ffffff';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = 'bold 74px "Arial Black", Impact, sans-serif';
-  ctx.fillText('BIG-ASS TREES', W / 2, 95);
-  ctx.restore();
+  ctx.font = '108px Boogaloo, "Arial Black", Impact, sans-serif';
+  ctx.fillText('BIG-ASS TREES', W / 2, 105);
   ctx.strokeStyle = '#c8a84b';
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(30, 135); ctx.lineTo(W - 30, 135);
+  ctx.moveTo(40, 160); ctx.lineTo(W - 40, 160);
   ctx.stroke();
   ctx.fillStyle = '#c8a84b';
-  ctx.font = 'bold 20px Arial, sans-serif';
+  ctx.font = 'bold 40px Arial, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('PLAYA  FRESHENER', W / 2, 165);
+  ctx.fillText('PLAYA  FRESHENER', W / 2, 200);
   return new THREE.CanvasTexture(canvas);
 }
 
@@ -419,26 +422,48 @@ rainbowHaloLine.visible = false;
 scene.add(rainbowHaloLine);
 
 // ─── Logo ─────────────────────────────────────────────────────────────────────
-const LOGO_W = 2.4, LOGO_H = 0.94, LOGO_CY = 7.0;
+const LOGO_H = 1.2, LOGO_CY = 7.0;
+const logoTex = buildLogoTexture();
+const LOGO_W = LOGO_H * (logoTex.image.width / logoTex.image.height);
 const logoMat = new THREE.MeshBasicMaterial({
-  map: buildLogoTexture(), transparent: true, opacity: 0.75,
+  map: logoTex, transparent: true, opacity: 0.75,
   side: THREE.DoubleSide, fog: false
+});
+function updateLogoGeometry(w) {
+  const geo = new THREE.PlaneGeometry(w, LOGO_H);
+  logoMesh.geometry.dispose(); logoMesh.geometry = geo;
+  logoMeshBack.geometry.dispose(); logoMeshBack.geometry = geo;
+}
+document.fonts.load('108px Boogaloo').then(() => {
+  const tex = buildLogoTexture();
+  logoMat.map = tex;
+  logoMat.needsUpdate = true;
+  updateLogoGeometry(LOGO_H * (tex.image.width / tex.image.height));
 });
 const logoMesh = new THREE.Mesh(new THREE.PlaneGeometry(LOGO_W, LOGO_H), logoMat);
 logoMesh.position.set(0, LOGO_CY, depth / 2 + 0.05);
+logoMesh.rotation.z = 20 * Math.PI / 180;
 scene.add(logoMesh);
 
 const logoMeshBack = new THREE.Mesh(new THREE.PlaneGeometry(LOGO_W, LOGO_H), logoMat);
 logoMeshBack.position.set(0, LOGO_CY, -(depth / 2 + 0.05));
 logoMeshBack.rotation.y = Math.PI;
+logoMeshBack.rotation.z = -20 * Math.PI / 180;
 scene.add(logoMeshBack);
 
+const logoTilt = 20 * Math.PI / 180;
+const cosT = Math.cos(logoTilt), sinT = Math.sin(logoTilt);
+function tiltPt(x, y, z) {
+  const dy = y - LOGO_CY;
+  return new THREE.Vector3(x * cosT - dy * sinT, LOGO_CY + x * sinT + dy * cosT, z);
+}
+
 const logoBorderPts = [
-  new THREE.Vector3(-LOGO_W / 2, LOGO_CY - LOGO_H / 2, depth / 2 + 0.1),
-  new THREE.Vector3( LOGO_W / 2, LOGO_CY - LOGO_H / 2, depth / 2 + 0.1),
-  new THREE.Vector3( LOGO_W / 2, LOGO_CY + LOGO_H / 2, depth / 2 + 0.1),
-  new THREE.Vector3(-LOGO_W / 2, LOGO_CY + LOGO_H / 2, depth / 2 + 0.1),
-  new THREE.Vector3(-LOGO_W / 2, LOGO_CY - LOGO_H / 2, depth / 2 + 0.1),
+  tiltPt(-LOGO_W / 2, LOGO_CY - LOGO_H / 2, depth / 2 + 0.1),
+  tiltPt( LOGO_W / 2, LOGO_CY - LOGO_H / 2, depth / 2 + 0.1),
+  tiltPt( LOGO_W / 2, LOGO_CY + LOGO_H / 2, depth / 2 + 0.1),
+  tiltPt(-LOGO_W / 2, LOGO_CY + LOGO_H / 2, depth / 2 + 0.1),
+  tiltPt(-LOGO_W / 2, LOGO_CY - LOGO_H / 2, depth / 2 + 0.1),
 ];
 const logoBorderGeo = new LineGeometry();
 logoBorderGeo.setPositions(logoBorderPts.flatMap(p => [p.x, p.y, p.z]));
@@ -461,11 +486,11 @@ logoBorderHaloLine.visible = false;
 scene.add(logoBorderHaloLine);
 
 const logoBorderBackPts = [
-  new THREE.Vector3(-LOGO_W / 2, LOGO_CY - LOGO_H / 2, -(depth / 2 + 0.1)),
-  new THREE.Vector3( LOGO_W / 2, LOGO_CY - LOGO_H / 2, -(depth / 2 + 0.1)),
-  new THREE.Vector3( LOGO_W / 2, LOGO_CY + LOGO_H / 2, -(depth / 2 + 0.1)),
-  new THREE.Vector3(-LOGO_W / 2, LOGO_CY + LOGO_H / 2, -(depth / 2 + 0.1)),
-  new THREE.Vector3(-LOGO_W / 2, LOGO_CY - LOGO_H / 2, -(depth / 2 + 0.1)),
+  tiltPt(-LOGO_W / 2, LOGO_CY - LOGO_H / 2, -(depth / 2 + 0.1)),
+  tiltPt( LOGO_W / 2, LOGO_CY - LOGO_H / 2, -(depth / 2 + 0.1)),
+  tiltPt( LOGO_W / 2, LOGO_CY + LOGO_H / 2, -(depth / 2 + 0.1)),
+  tiltPt(-LOGO_W / 2, LOGO_CY + LOGO_H / 2, -(depth / 2 + 0.1)),
+  tiltPt(-LOGO_W / 2, LOGO_CY - LOGO_H / 2, -(depth / 2 + 0.1)),
 ];
 const logoBorderBackGeo = new LineGeometry();
 logoBorderBackGeo.setPositions(logoBorderBackPts.flatMap(p => [p.x, p.y, p.z]));
