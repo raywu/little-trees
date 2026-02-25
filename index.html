@@ -242,7 +242,7 @@ function buildScentDispenser() {
   redBtn.rotation.x = Math.PI / 2;
   redBtn.position.set(0, 0.55, -4.05);
   group.add(redBtn);
-  return group;
+  return { group, redBtn };
 }
 
 // ─── Solar panels ─────────────────────────────────────────────────────────────
@@ -354,6 +354,25 @@ controls.maxPolarAngle = Math.PI / 2 - 0.02;
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 
+const raycaster = new THREE.Raycaster();
+const _pointer  = new THREE.Vector2();
+let _pdX = 0, _pdY = 0;
+const DRAG_THRESHOLD = 8;
+
+renderer.domElement.addEventListener('pointerdown', e => { _pdX = e.clientX; _pdY = e.clientY; });
+renderer.domElement.addEventListener('pointerup', e => {
+  if (Math.hypot(e.clientX - _pdX, e.clientY - _pdY) > DRAG_THRESHOLD) return;
+  _pointer.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  raycaster.setFromCamera(_pointer, camera);
+  if (raycaster.intersectObject(redBtnMesh).length > 0) triggerBtnPress();
+});
+renderer.domElement.addEventListener('pointermove', e => {
+  _pointer.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  raycaster.setFromCamera(_pointer, camera);
+  renderer.domElement.style.cursor =
+    raycaster.intersectObject(redBtnMesh).length > 0 ? 'pointer' : 'default';
+});
+
 // ─── Lighting ─────────────────────────────────────────────────────────────────
 const ambientDay = new THREE.AmbientLight(0xfff4e0, 0.6);
 scene.add(ambientDay);
@@ -381,19 +400,11 @@ treeGlow.position.set(0, 7, 1);
 scene.add(treeGlow);
 
 const moonLight = new THREE.DirectionalLight(0xcce4ff, 0.0);
-moonLight.position.set(
-  Math.sin(1.3) * Math.cos(0.9),
-  Math.cos(1.3),
-  Math.sin(1.3) * Math.sin(0.9)
-);
+moonLight.position.set(Math.sin(1.35), Math.cos(1.35), 0);
 scene.add(moonLight);
 
 const moonSpot = new THREE.SpotLight(0xcce4ff, 0.0, 0, Math.PI / 5, 0.9, 0);
-moonSpot.position.set(
-  285 * Math.sin(1.3) * Math.cos(0.9),
-  285 * Math.cos(1.3),
-  285 * Math.sin(1.3) * Math.sin(0.9)
-);
+moonSpot.position.set(285 * Math.sin(1.35), 285 * Math.cos(1.35), 0);
 scene.add(moonSpot);
 scene.add(moonSpot.target);
 
@@ -556,7 +567,8 @@ scene.add(wireGroup);
 
 // ─── Solar panels ─────────────────────────────────────────────────────────────
 scene.add(buildSolarPanels());
-scene.add(buildScentDispenser());
+const { group: dispenserGroup, redBtn: redBtnMesh } = buildScentDispenser();
+scene.add(dispenserGroup);
 
 // ─── Mist particle system ─────────────────────────────────────────────────────
 const mistGeo = new THREE.BufferGeometry();
@@ -602,11 +614,7 @@ const moonMaskMat = new THREE.MeshBasicMaterial({ color: 0x03030f, side: THREE.D
 const moonMask = new THREE.Mesh(moonMaskGeo, moonMaskMat);
 moonMask.position.set(1.8, 0, -0.5);
 moon.add(moonMask);
-moon.position.set(
-  285 * Math.sin(1.3) * Math.cos(0.9),
-  285 * Math.cos(1.3),
-  285 * Math.sin(1.3) * Math.sin(0.9)
-);
+moon.position.set(285 * Math.sin(1.35), 285 * Math.cos(1.35), 0);
 moon.lookAt(0, 0, 0);
 moon.visible = false;
 scene.add(moon);
@@ -773,18 +781,42 @@ ledBtn.addEventListener('click', () => {
 });
 
 const scentBtn = document.getElementById('scentBtn');
-scentBtn.addEventListener('click', () => {
+function dispenseScent() {
+  if (mistActive) return;
   mistActive = true;
   mistEndTime = elapsedTime + 10;
   scentBtn.disabled = true;
   scentBtn.textContent = 'Dispensing...';
-});
+  redBtnMesh.material.emissive.set(0x440000);
+  redBtnMesh.material.emissiveIntensity = 0.5;
+}
+scentBtn.addEventListener('click', dispenseScent);
 
 // ─── Mist state ───────────────────────────────────────────────────────────────
 let mistActive = false;
 let mistEndTime = 0;
+const BTN_REST_Z  = -4.05;
+const BTN_PRESS_Z = -3.93;
+const BTN_SPRING  = 0.30;
+let btnPressTime  = -1;
 const mistParticles = [];
 const MAX_MIST = 300;
+
+function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+
+function updateBtnAnimation() {
+  if (btnPressTime < 0) return;
+  const t = Math.min(1, (elapsedTime - btnPressTime) / BTN_SPRING);
+  redBtnMesh.position.z = BTN_PRESS_Z + (BTN_REST_Z - BTN_PRESS_Z) * easeOutCubic(t);
+  if (t >= 1) { redBtnMesh.position.z = BTN_REST_Z; btnPressTime = -1; }
+}
+
+function triggerBtnPress() {
+  if (mistActive) return;
+  redBtnMesh.position.z = BTN_PRESS_Z;
+  btnPressTime = elapsedTime;
+  dispenseScent();
+}
 
 function updateMist(delta) {
   const scentBtn = document.getElementById('scentBtn');
@@ -836,6 +868,7 @@ function updateMist(delta) {
     mistActive = false;
     scentBtn.disabled = false;
     scentBtn.textContent = 'Dispense Scent';
+    redBtnMesh.material.emissiveIntensity = 0;
   }
 }
 
@@ -847,6 +880,7 @@ function animate() {
   updateDayNight(delta);
   updateLedPattern(elapsedTime);
   updateMist(delta);
+  updateBtnAnimation();
   controls.update();
   renderer.render(scene, camera);
 }
