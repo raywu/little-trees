@@ -48,6 +48,22 @@ canvas { display: block; }
   z-index: 10;
 }
 #ledBtn:hover { background: rgba(255,255,255,0.15); }
+#scentBtn {
+  position: fixed;
+  top: 92px;
+  right: 16px;
+  padding: 8px 16px;
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.3);
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: monospace;
+  font-size: 14px;
+  z-index: 10;
+}
+#scentBtn:hover:not(:disabled) { background: rgba(255,255,255,0.15); }
+#scentBtn:disabled { opacity: 0.5; cursor: default; }
 #label {
   position: fixed;
   bottom: 16px;
@@ -62,6 +78,7 @@ canvas { display: block; }
 <body>
 <button id="btn">Night Mode</button>
 <button id="ledBtn">LED: ...</button>
+<button id="scentBtn">Dispense Scent</button>
 <div id="label">Little Trees · Black Rock Desert · 2026</div>
 <script type="module">
 import * as THREE from 'three';
@@ -206,6 +223,26 @@ function buildGuyWires(scene) {
   }
 
   return { group, ledMarkers };
+}
+
+// ─── Scent dispenser ──────────────────────────────────────────────────────────
+function buildScentDispenser() {
+  const group = new THREE.Group();
+  const box = new THREE.Mesh(
+    new THREE.BoxGeometry(1.0, 1.0, 1.0),
+    new THREE.MeshStandardMaterial({ color: 0x2a2a2a })
+  );
+  box.position.set(0, 0.5, -3.5);
+  box.receiveShadow = true;
+  group.add(box);
+  const redBtn = new THREE.Mesh(
+    new THREE.CylinderGeometry(5 / 12, 5 / 12, 0.08, 32),
+    new THREE.MeshStandardMaterial({ color: 0xcc0000 })
+  );
+  redBtn.rotation.x = Math.PI / 2;
+  redBtn.position.set(0, 0.55, -4.05);
+  group.add(redBtn);
+  return group;
 }
 
 // ─── Solar panels ─────────────────────────────────────────────────────────────
@@ -519,6 +556,16 @@ scene.add(wireGroup);
 
 // ─── Solar panels ─────────────────────────────────────────────────────────────
 scene.add(buildSolarPanels());
+scene.add(buildScentDispenser());
+
+// ─── Mist particle system ─────────────────────────────────────────────────────
+const mistGeo = new THREE.BufferGeometry();
+const mistMat = new THREE.PointsMaterial({
+  size: 0.35, vertexColors: true, transparent: true, opacity: 0.75,
+  depthWrite: false, sizeAttenuation: true
+});
+const mistPoints = new THREE.Points(mistGeo, mistMat);
+scene.add(mistPoints);
 
 // ─── Scent fan housing ────────────────────────────────────────────────────────
 const fanHousing = new THREE.Mesh(
@@ -725,6 +772,73 @@ ledBtn.addEventListener('click', () => {
   ledBtn.textContent = 'LED: ' + mode.name;
 });
 
+const scentBtn = document.getElementById('scentBtn');
+scentBtn.addEventListener('click', () => {
+  mistActive = true;
+  mistEndTime = elapsedTime + 10;
+  scentBtn.disabled = true;
+  scentBtn.textContent = 'Dispensing...';
+});
+
+// ─── Mist state ───────────────────────────────────────────────────────────────
+let mistActive = false;
+let mistEndTime = 0;
+const mistParticles = [];
+const MAX_MIST = 300;
+
+function updateMist(delta) {
+  const scentBtn = document.getElementById('scentBtn');
+  if (mistActive && elapsedTime < mistEndTime) {
+    const remaining = Math.ceil(mistEndTime - elapsedTime);
+    scentBtn.textContent = `Dispensing... ${remaining}s`;
+    for (let i = 0; i < 4 && mistParticles.length < MAX_MIST; i++) {
+      const maxLife = 2.0 + Math.random() * 1.5;
+      mistParticles.push({
+        pos: new THREE.Vector3(
+          (Math.random() - 0.5) * 0.3,
+          1.05,
+          -3.5 + (Math.random() - 0.5) * 0.3
+        ),
+        vel: new THREE.Vector3(
+          (Math.random() - 0.5) * 0.3,
+          0.5 + Math.random() * 0.5,
+          (Math.random() - 0.5) * 0.3
+        ),
+        life: maxLife,
+        maxLife
+      });
+    }
+  }
+  for (let i = mistParticles.length - 1; i >= 0; i--) {
+    const p = mistParticles[i];
+    p.pos.addScaledVector(p.vel, delta);
+    p.life -= delta;
+    if (p.life <= 0) mistParticles.splice(i, 1);
+  }
+  if (mistParticles.length > 0) {
+    const positions = new Float32Array(mistParticles.length * 3);
+    const colors = new Float32Array(mistParticles.length * 3);
+    for (let i = 0; i < mistParticles.length; i++) {
+      const p = mistParticles[i];
+      positions[i * 3]     = p.pos.x;
+      positions[i * 3 + 1] = p.pos.y;
+      positions[i * 3 + 2] = p.pos.z;
+      const b = p.life / p.maxLife;
+      colors[i * 3] = b; colors[i * 3 + 1] = b; colors[i * 3 + 2] = b;
+    }
+    mistGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    mistGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  } else {
+    mistGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
+    mistGeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(0), 3));
+  }
+  if (mistActive && elapsedTime >= mistEndTime && mistParticles.length === 0) {
+    mistActive = false;
+    scentBtn.disabled = false;
+    scentBtn.textContent = 'Dispense Scent';
+  }
+}
+
 // ─── Animate ──────────────────────────────────────────────────────────────────
 function animate() {
   requestAnimationFrame(animate);
@@ -732,6 +846,7 @@ function animate() {
   elapsedTime += delta;
   updateDayNight(delta);
   updateLedPattern(elapsedTime);
+  updateMist(delta);
   controls.update();
   renderer.render(scene, camera);
 }
